@@ -13,5 +13,4 @@ services:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings
       - key: ALLOWED_HOSTS
-        scope: build
-        value: "*.render.com"
+        value: loraapi.onrender.com
