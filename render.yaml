@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: lora-api
+    runtime: python
+    pythonVersion: 3.11
+    buildCommand: |
+      pip install -r requirements.txt
+      cd config && python manage.py collectstatic --noinput
+    startCommand: cd config && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings
+      - key: ALLOWED_HOSTS
+        scope: build
+        value: "*.render.com"
