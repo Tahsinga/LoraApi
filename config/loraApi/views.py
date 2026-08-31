@@ -1,8 +1,19 @@
 import json
+import time
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 
 SYNC_QUEUE = []
+
+
+def cleanup_queue():
+    """Remove processed items older than 10 seconds"""
+    global SYNC_QUEUE
+    current_time = time.time()
+    SYNC_QUEUE = [
+        item for item in SYNC_QUEUE
+        if item.get('status') == 'queued' or (current_time - item.get('timestamp', current_time)) < 10
+    ]
 
 
 @csrf_exempt
@@ -38,10 +49,14 @@ def health_check(request):
 
 @csrf_exempt
 def branch_sync(request):
+    cleanup_queue()  # Clean old processed items
+    
     if request.method == 'GET':
+        # Only return queued items (not processed ones)
+        queued_items = [item for item in SYNC_QUEUE if item.get('status') == 'queued']
         return JsonResponse({
-            'pending': SYNC_QUEUE,
-            'count': len(SYNC_QUEUE),
+            'pending': queued_items,
+            'count': len(queued_items),
         })
 
     payload = json.loads(request.body or '{}')
@@ -52,6 +67,7 @@ def branch_sync(request):
         'action': payload.get('action', 'sync'),
         'deleted': payload.get('deleted', False),
         'status': 'queued',
+        'timestamp': time.time(),
     }
     SYNC_QUEUE.append(item)
 
@@ -64,10 +80,13 @@ def branch_sync(request):
 
 @csrf_exempt
 def main_sync(request):
+    cleanup_queue()  # Clean old processed items
+    
     if request.method == 'GET':
         return JsonResponse({
             'branches': ['Branch A', 'Branch B', 'Branch C'],
-            'sync_queue': SYNC_QUEUE,
+            'sync_queue': [item for item in SYNC_QUEUE if item.get('status') == 'queued'],
+            'total_queued': len([item for item in SYNC_QUEUE if item.get('status') == 'queued']),
         })
 
     payload = json.loads(request.body or '{}')
