@@ -26,11 +26,11 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-j#e+09ytj0=mmt_#(upoq
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = [
+ALLOWED_HOSTS = ['*'] if DEBUG else [
     host.strip()
     for host in os.environ.get(
         'ALLOWED_HOSTS',
-        'localhost,127.0.0.1,loraapi.onrender.com',
+        'localhost,127.0.0.1,loraapi.onrender.com,lora-api.onrender.com',
     ).split(',')
     if host.strip()
 ]
@@ -127,7 +127,7 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR.parent / 'staticfiles'
 
 # Security settings for production
-SECURE_SSL_REDIRECT = not DEBUG
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False') == 'True'
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_BROWSER_XSS_FILTER = True
