@@ -251,7 +251,7 @@ def main_sync(request):
             'pending_deletions': pending,
             'pending_count': len(pending),
             'recently_processed': processed,
-            'processed_count': len(processed)
+            'processed_count': len(PROCESSED_DELETIONS)
         })
 
     # POST: Main sends deletion request to all branches

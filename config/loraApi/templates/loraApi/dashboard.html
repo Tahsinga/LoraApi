@@ -44,9 +44,6 @@
     .row small { display:block; margin-top:4px; color:var(--muted); }
     .badge { align-self:start; padding:5px 8px; color:#8b651d; background:#fff3d4; font:700 10px Arial,sans-serif; letter-spacing:.8px; text-transform:uppercase; }
     .badge.confirmed { color:#176342; background:#dff2e7; }
-    .recent { margin-top:26px; padding-top:20px; border-top:1px solid var(--line); }
-    .recent h3 { margin:0 0 5px; font-size:19px; font-weight:500; }
-    .recent .sub { margin-bottom:10px; }
     .empty { padding:18px 0 4px; color:var(--muted); font:14px Arial,sans-serif; }
     @media (max-width:760px) { header { display:block; padding-top:28px; } .live { margin-top:20px; } main { padding:0 16px 36px; } .workspace { grid-template-columns:1fr; } .panel { padding:20px; } form { grid-template-columns:1fr; } .wide { grid-column:auto; } button { grid-column:auto; } }
   </style>
@@ -76,11 +73,6 @@
       <div class="panel queue">
         <div class="queue-head"><h2>Branch queue</h2><button class="refresh" id="refresh" type="button">Refresh</button></div>
         <div id="rows" class="rows"><div class="empty">Loading queue...</div></div>
-        <div class="recent">
-          <h3>Confirmed invoices</h3>
-          <p class="sub">Completed branch deletions from the last 24 hours.</p>
-          <div id="confirmed-rows" class="rows"><div class="empty">Loading confirmations...</div></div>
-        </div>
       </div>
     </section>
   </main>
@@ -90,7 +82,6 @@
   const notice = document.querySelector('#notice');
   const submit = document.querySelector('#submit');
   const rows = document.querySelector('#rows');
-  const confirmedRows = document.querySelector('#confirmed-rows');
   const branchSelect = document.querySelector('#branch');
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
   async function refreshQueue() {
@@ -101,11 +92,6 @@
       document.querySelector('#processed').textContent = data.processed_count ?? 0;
       const items = data.pending_deletions ?? [];
       rows.innerHTML = items.length ? items.map(item => `<div class="row"><div><b>${escapeHtml(item.invoice)}</b><small>${escapeHtml(item.branch)} · Whole invoice</small></div><span class="badge">Pending</span></div>`).join('') : '<div class="empty">No cancellations are waiting.</div>';
-      const confirmed = data.recently_processed ?? [];
-      confirmedRows.innerHTML = confirmed.length ? confirmed.slice().reverse().map(item => {
-        const confirmedAt = item.confirmation_timestamp ? new Date(item.confirmation_timestamp * 1000).toLocaleString() : 'Recently';
-        return `<div class="row"><div><b>${escapeHtml(item.invoice)}</b><small>${escapeHtml(item.confirmed_branch || item.branch)} · ${escapeHtml(confirmedAt)} · ${escapeHtml(item.deleted_rows ?? 0)} row(s) deleted</small></div><span class="badge confirmed">Confirmed</span></div>`;
-      }).join('') : '<div class="empty">No confirmed invoices yet.</div>';
     } catch (error) { rows.innerHTML = '<div class="empty">Queue unavailable. Try again.</div>'; }
   }
   async function refreshBranches() {
