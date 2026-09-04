@@ -53,10 +53,10 @@ def cleanup_queues():
         if item.get('status') == 'pending' or (current_time - item.get('timestamp', current_time)) < 60
     ]
     
-    # Keep processed items for 30 seconds for confirmation
+    # Keep confirmed items long enough for the dashboard to show recent invoices.
     PROCESSED_DELETIONS = [
         item for item in PROCESSED_DELETIONS
-        if (current_time - item.get('timestamp', current_time)) < 30
+        if (current_time - item.get('confirmation_timestamp', item.get('timestamp', current_time))) < 86400
     ]
 
 
