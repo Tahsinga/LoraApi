@@ -66,6 +66,27 @@ class DeletionQueueTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual([item['invoice'] for item in response.json()['cancellations']], ['INV-NEW', 'INV-OLD'])
 
+	def test_history_filters_by_invoice_and_returns_deleted_by(self):
+		response = self.client.post(
+			'/api/cancel-sale/',
+			data=json.dumps({'invoice': 'INV-FILTER', 'branch': 'Branch C'}),
+			content_type='application/json',
+		)
+		deletion_id = response.json()['deletion_id']
+		self.client.post(
+			'/api/confirm-deletion/',
+			data=json.dumps({
+				'deletion_id': deletion_id,
+				'deleted_rows': 2,
+				'branch': 'Branch C',
+				'deleted_by': 'cashier-17',
+			}),
+			content_type='application/json',
+		)
+
+		response = self.client.get('/api/cancellation-history/?invoice=FILTER')
+		self.assertEqual(response.json()['cancellations'][0]['deleted_by'], 'cashier-17')
+
 
 class AuthenticationTests(TestCase):
 	def setUp(self):

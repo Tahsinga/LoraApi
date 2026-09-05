@@ -19,9 +19,9 @@
     main { max-width:1180px; margin:auto; padding:0 28px 54px; }
     .toolbar { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:18px; }
     .toolbar p { margin:0; color:var(--muted); font:14px Arial,sans-serif; }
-    .filter { display:flex; gap:10px; }
-    input, button { height:42px; border:1px solid #cbd7d2; border-radius:2px; font:14px Arial,sans-serif; }
-    input { width:220px; padding:10px 12px; background:var(--white); }
+    .filter { display:flex; gap:10px; flex-wrap:wrap; }
+    input, select, button { height:42px; border:1px solid #cbd7d2; border-radius:2px; font:14px Arial,sans-serif; }
+    input, select { width:220px; padding:10px 12px; background:var(--white); }
     button { padding:0 15px; color:#fff; background:var(--teal); cursor:pointer; font-weight:700; letter-spacing:.8px; text-transform:uppercase; }
     button:hover { background:var(--teal-dark); }
     .table-wrap { overflow-x:auto; background:var(--white); border:1px solid var(--line); box-shadow:0 12px 35px rgba(28,62,54,.06); }
@@ -46,14 +46,15 @@
     <div class="toolbar">
       <p id="summary">Loading saved cancellations...</p>
       <form class="filter" id="filter-form">
-        <input id="branch" name="branch" placeholder="Filter by branch" autocomplete="off">
+        <select id="branch" name="branch"><option value="">All branches</option></select>
+        <input id="invoice" name="invoice" placeholder="Search invoice number" autocomplete="off">
         <button type="submit">Search</button>
       </form>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Invoice number</th><th>Branch</th><th>Cancelled date</th><th>Deleted rows</th><th>Status</th></tr></thead>
-        <tbody id="history"><tr><td colspan="5" class="empty">Loading saved cancellations...</td></tr></tbody>
+        <thead><tr><th>Invoice number</th><th>Branch</th><th>Deleted by</th><th>Cancelled date</th><th>Deleted rows</th><th>Status</th></tr></thead>
+        <tbody id="history"><tr><td colspan="6" class="empty">Loading saved cancellations...</td></tr></tbody>
       </table>
     </div>
   </main>
@@ -66,14 +67,19 @@
   async function loadHistory() {
     try {
       const branch = document.querySelector('#branch').value.trim();
-      const response = await fetch('/api/cancellation-history/?branch=' + encodeURIComponent(branch));
+      const invoice = document.querySelector('#invoice').value.trim();
+      const response = await fetch('/api/cancellation-history/?branch=' + encodeURIComponent(branch) + '&invoice=' + encodeURIComponent(invoice));
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'History unavailable.');
+      const branchSelect = document.querySelector('#branch');
+      const selectedBranch = branchSelect.value;
+      branchSelect.innerHTML = '<option value="">All branches</option>' + (data.branches || []).map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+      branchSelect.value = selectedBranch;
       summary.textContent = `${data.count} saved cancellation${data.count === 1 ? '' : 's'}, newest first`;
-      historyBody.innerHTML = data.cancellations.length ? data.cancellations.map(item => `<tr><td>${escapeHtml(item.invoice)}</td><td>${escapeHtml(item.branch)}</td><td>${escapeHtml(formatDate(item.cancelled_at))}</td><td>${item.deleted_rows ?? 'Not reported'}</td><td><span class="status">Confirmed</span></td></tr>`).join('') : '<tr><td colspan="5" class="empty">No cancelled invoices found.</td></tr>';
+      historyBody.innerHTML = data.cancellations.length ? data.cancellations.map(item => `<tr><td>${escapeHtml(item.invoice)}</td><td>${escapeHtml(item.branch)}</td><td>${escapeHtml(item.deleted_by)}</td><td>${escapeHtml(formatDate(item.cancelled_at))}</td><td>${item.deleted_rows ?? 'Not reported'}</td><td><span class="status">Confirmed</span></td></tr>`).join('') : '<tr><td colspan="6" class="empty">No cancelled invoices found.</td></tr>';
     } catch (error) {
       summary.textContent = 'History unavailable';
-      historyBody.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(error.message)}</td></tr>`;
+      historyBody.innerHTML = `<tr><td colspan="6" class="error">${escapeHtml(error.message)}</td></tr>`;
     }
   }
   document.querySelector('#filter-form').addEventListener('submit', event => { event.preventDefault(); loadHistory(); });

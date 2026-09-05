@@ -14,6 +14,7 @@ class DeletionRecord(models.Model):
 	deleted_from_main = models.BooleanField(default=False)
 	message = models.TextField(blank=True, default='')
 	deleted_rows = models.IntegerField(null=True, blank=True)
+	deleted_by = models.CharField(max_length=255, blank=True, default='')
 	confirmed_branch = models.CharField(max_length=255, blank=True, null=True)
 	confirmation_timestamp = models.DateTimeField(null=True, blank=True)
 

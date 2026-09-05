@@ -92,20 +92,32 @@ def cancellation_history_api(request):
         return JsonResponse({'status': 'error', 'message': 'Use GET method'}, status=405)
 
     branch = request.GET.get('branch', '').strip()
+    invoice = request.GET.get('invoice', '').strip()
     query = DeletionRecord.objects.filter(status='processed')
     if branch:
         query = query.filter(branch__icontains=branch)
+    if invoice:
+        query = query.filter(invoice__icontains=invoice)
 
     records = list(query.order_by('-confirmation_timestamp', '-timestamp')[:500])
+    branches = list(
+        DeletionRecord.objects.filter(status='processed')
+        .exclude(branch='')
+        .values_list('branch', flat=True)
+        .distinct()
+        .order_by('branch')
+    )
     return JsonResponse({
         'status': 'ok',
         'count': len(records),
+        'branches': branches,
         'cancellations': [
             {
                 'invoice': record.invoice,
                 'branch': record.confirmed_branch or record.branch,
                 'cancelled_at': (record.confirmation_timestamp or record.timestamp).isoformat(),
                 'deleted_rows': record.deleted_rows,
+                'deleted_by': record.deleted_by or 'Not reported',
                 'source': record.source,
             }
             for record in records
@@ -412,6 +424,9 @@ def confirm_deletion(request):
     deleted_rows = payload.get('deleted_rows', 0)
     branch = payload.get('branch')
     success = payload.get('success', False)
+    deleted_by = str(
+        payload.get('deleted_by') or payload.get('username') or payload.get('user_number') or ''
+    ).strip()
     
     if not deletion_id:
         return JsonResponse({
@@ -430,10 +445,11 @@ def confirm_deletion(request):
 
         deletion_record.status = 'processed'
         deletion_record.deleted_rows = deleted_rows
+        deletion_record.deleted_by = deleted_by
         deletion_record.confirmed_branch = branch
         deletion_record.confirmation_timestamp = timezone.now()
         deletion_record.save(update_fields=[
-            'status', 'deleted_rows', 'confirmed_branch', 'confirmation_timestamp'
+            'status', 'deleted_rows', 'deleted_by', 'confirmed_branch', 'confirmation_timestamp'
         ])
 
     return JsonResponse({
