@@ -1,6 +1,5 @@
 import json
 import time
-from datetime import timedelta
 from django.db import transaction
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render
@@ -41,11 +40,8 @@ BRANCH_ONLINE_SECONDS = 20
 
 
 def cleanup_queues():
-    """Remove old confirmed records while retaining the audit trail briefly."""
-    cutoff = timezone.now() - timedelta(days=1)
-    DeletionRecord.objects.filter(
-        status='processed', confirmation_timestamp__lt=cutoff
-    ).delete()
+    """Keep deletion records available as a permanent cancellation history."""
+    return None
 
 
 def record_payload(record):
@@ -74,6 +70,40 @@ def index(request):
     return render(request, 'loraApi/dashboard.html', {
         'pending_count': DeletionRecord.objects.filter(status__in=['pending', 'processing']).count(),
         'processed_count': DeletionRecord.objects.filter(status='processed').count(),
+    })
+
+
+@csrf_exempt
+def cancellation_history(request):
+    """Show the saved cancellation history page."""
+    return render(request, 'loraApi/history.html')
+
+
+@csrf_exempt
+def cancellation_history_api(request):
+    """Return processed cancellations in newest-first order."""
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'message': 'Use GET method'}, status=405)
+
+    branch = request.GET.get('branch', '').strip()
+    query = DeletionRecord.objects.filter(status='processed')
+    if branch:
+        query = query.filter(branch__icontains=branch)
+
+    records = list(query.order_by('-confirmation_timestamp', '-timestamp')[:500])
+    return JsonResponse({
+        'status': 'ok',
+        'count': len(records),
+        'cancellations': [
+            {
+                'invoice': record.invoice,
+                'branch': record.confirmed_branch or record.branch,
+                'cancelled_at': (record.confirmation_timestamp or record.timestamp).isoformat(),
+                'deleted_rows': record.deleted_rows,
+                'source': record.source,
+            }
+            for record in records
+        ],
     })
 
 

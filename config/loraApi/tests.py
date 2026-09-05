@@ -36,3 +36,26 @@ class DeletionQueueTests(TestCase):
 		summary = self.client.get('/api/main-sync/').json()
 		self.assertEqual(summary['pending_count'], 0)
 		self.assertEqual(summary['processed_count'], 1)
+
+	def test_history_returns_confirmed_invoices_newest_first(self):
+		older = self.client.post(
+			'/api/cancel-sale/',
+			data=json.dumps({'invoice': 'INV-OLD', 'branch': 'Branch A'}),
+			content_type='application/json',
+		).json()['deletion_id']
+		newer = self.client.post(
+			'/api/cancel-sale/',
+			data=json.dumps({'invoice': 'INV-NEW', 'branch': 'Branch B'}),
+			content_type='application/json',
+		).json()['deletion_id']
+
+		for deletion_id, branch in [(older, 'Branch A'), (newer, 'Branch B')]:
+			self.client.post(
+				'/api/confirm-deletion/',
+				data=json.dumps({'deletion_id': deletion_id, 'deleted_rows': 1, 'branch': branch}),
+				content_type='application/json',
+			)
+
+		response = self.client.get('/api/cancellation-history/?branch=Branch')
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual([item['invoice'] for item in response.json()['cancellations']], ['INV-NEW', 'INV-OLD'])

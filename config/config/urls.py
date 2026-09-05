@@ -16,10 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from loraApi.views import favicon, index
+from loraApi.views import cancellation_history, favicon, index
 
 urlpatterns = [
     path('', index, name='dashboard'),
+    path('history/', cancellation_history, name='cancellation_history_page'),
     path('favicon.ico', favicon, name='favicon'),
     path('admin/', admin.site.urls),
     path('api/', include('loraApi.urls')),
