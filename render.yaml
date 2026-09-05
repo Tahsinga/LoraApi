@@ -2,7 +2,7 @@ services:
   - type: web
     name: lora-api
     runtime: python
-    pythonVersion: 3.11
+    pythonVersion: 3.13
     buildCommand: |
       pip install -r requirements.txt
       python config/manage.py migrate --noinput
@@ -10,7 +10,7 @@ services:
     startCommand: cd config && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --worker-class sync --timeout 60
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11
+        value: 3.13
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings
       - key: ALLOWED_HOSTS
