@@ -37,7 +37,7 @@
 <div class="shell">
   <header>
     <div><p class="eyebrow">Lora operations</p><h1>Cancellation history</h1></div>
-    <a class="back" href="/">Back to sale control</a>
+    <div><a class="back" href="/">Back to sale control</a>{% if user.is_superuser %} <a class="back" href="/users/">User accounts</a>{% endif %} <a class="back" href="/logout/">Sign out</a></div>
   </header>
   <main>
     <div class="toolbar">

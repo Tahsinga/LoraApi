@@ -3,6 +3,9 @@ import time
 from django.db import transaction
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render
+from django.contrib.auth import get_user_model, update_session_auth_hash
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.forms import SetPasswordForm, UserCreationForm
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from .models import DeletionRecord
@@ -63,6 +66,7 @@ def record_payload(record):
     }
 
 
+@login_required(login_url='/login/')
 @csrf_exempt
 def index(request):
     """Browser dashboard for managing branch sale cancellations."""
@@ -73,12 +77,14 @@ def index(request):
     })
 
 
+@login_required(login_url='/login/')
 @csrf_exempt
 def cancellation_history(request):
     """Show the saved cancellation history page."""
     return render(request, 'loraApi/history.html')
 
 
+@login_required(login_url='/login/')
 @csrf_exempt
 def cancellation_history_api(request):
     """Return processed cancellations in newest-first order."""
@@ -107,6 +113,52 @@ def cancellation_history_api(request):
     })
 
 
+def is_admin(user):
+    return user.is_authenticated and user.is_superuser
+
+
+@user_passes_test(is_admin, login_url='/login/')
+def user_management(request):
+    User = get_user_model()
+    message = ''
+    error = ''
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'create':
+            form = UserCreationForm(request.POST)
+            if form.is_valid():
+                user = form.save()
+                user.is_staff = False
+                user.is_superuser = False
+                user.save(update_fields=['is_staff', 'is_superuser'])
+                message = f'User {user.username} was created.'
+            else:
+                error = 'Please correct the new user details.'
+        elif action == 'change_password':
+            try:
+                user = User.objects.get(pk=request.POST.get('user_id'))
+            except User.DoesNotExist:
+                error = 'User not found.'
+            else:
+                form = SetPasswordForm(user, request.POST)
+                if form.is_valid():
+                    form.save()
+                    if user == request.user:
+                        update_session_auth_hash(request, user)
+                    message = f'Password changed for {user.username}.'
+                else:
+                    error = 'Password change failed. Use matching passwords and meet the password rules.'
+
+    users = User.objects.order_by('username')
+    return render(request, 'loraApi/users.html', {
+        'users': users,
+        'message': message,
+        'error': error,
+    })
+
+
+@login_required(login_url='/login/')
 @csrf_exempt
 def cancel_sale(request):
     """Queue a sale cancellation requested from the browser dashboard."""

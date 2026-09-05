@@ -17,4 +17,5 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 django.setup()
 call_command('migrate', interactive=False, verbosity=0)
+call_command('ensure_admin', verbosity=0)
 application = get_wsgi_application()

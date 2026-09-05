@@ -1,8 +1,14 @@
 from django.test import TestCase
+from django.contrib.auth import get_user_model
 import json
 
 
 class DeletionQueueTests(TestCase):
+	def setUp(self):
+		self.client.force_login(get_user_model().objects.create_user(
+			username='operator', password='OperatorPass4182!'
+		))
+
 	def test_dashboard_counts_saved_pending_record(self):
 		response = self.client.post(
 			'/api/cancel-sale/',
@@ -59,3 +65,35 @@ class DeletionQueueTests(TestCase):
 		response = self.client.get('/api/cancellation-history/?branch=Branch')
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual([item['invoice'] for item in response.json()['cancellations']], ['INV-NEW', 'INV-OLD'])
+
+
+class AuthenticationTests(TestCase):
+	def setUp(self):
+		self.admin = get_user_model().objects.create_superuser(
+			username='Admin', password='Tash1nga4182', email='admin@example.com'
+		)
+
+	def test_dashboard_requires_login(self):
+		response = self.client.get('/')
+		self.assertRedirects(response, '/login/?next=/')
+
+	def test_admin_can_create_user_and_change_password(self):
+		self.client.force_login(self.admin)
+		response = self.client.post('/users/', {
+			'action': 'create',
+			'username': 'operator',
+			'password1': 'OperatorPass4182!',
+			'password2': 'OperatorPass4182!',
+		})
+		self.assertEqual(response.status_code, 200)
+		operator = get_user_model().objects.get(username='operator')
+		self.assertFalse(operator.is_superuser)
+
+		response = self.client.post('/users/', {
+			'action': 'change_password',
+			'user_id': operator.pk,
+			'new_password1': 'ChangedPass4182!',
+			'new_password2': 'ChangedPass4182!',
+		})
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(operator.__class__.objects.get(pk=operator.pk).check_password('ChangedPass4182!'))

@@ -15,12 +15,16 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.contrib.auth import views as auth_views
 from django.urls import include, path
-from loraApi.views import cancellation_history, favicon, index
+from loraApi.views import cancellation_history, favicon, index, user_management
 
 urlpatterns = [
     path('', index, name='dashboard'),
     path('history/', cancellation_history, name='cancellation_history_page'),
+    path('login/', auth_views.LoginView.as_view(template_name='loraApi/login.html'), name='login'),
+    path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+    path('users/', user_management, name='user_management'),
     path('favicon.ico', favicon, name='favicon'),
     path('admin/', admin.site.urls),
     path('api/', include('loraApi.urls')),

@@ -55,7 +55,7 @@
 <div class="shell">
   <header>
     <div><p class="eyebrow">Lora operations</p><h1>Sale control</h1></div>
-    <div class="live"><a class="history-link" href="/history/">Cancellation history</a><i class="dot"></i> Gateway online</div>
+    <div class="live"><a class="history-link" href="/history/">Cancellation history</a>{% if user.is_superuser %}<a class="history-link" href="/users/">User accounts</a>{% endif %}<a class="history-link" href="/logout/">Sign out</a><i class="dot"></i> Gateway online</div>
   </header>
   <main>
     <section class="stats" aria-label="Queue status">

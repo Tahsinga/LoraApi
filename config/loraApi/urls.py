@@ -7,7 +7,6 @@ from .views import (
 
 urlpatterns = [
     path('', index, name='index'),
-    path('history/', cancellation_history, name='cancellation_history'),
     path('health/', health_check, name='health_check'),
     path('cancel-sale/', cancel_sale, name='cancel_sale'),
     path('branches/', branch_status, name='branch_status'),
