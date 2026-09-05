@@ -85,7 +85,7 @@ class DeletionQueueTests(TestCase):
 		)
 
 		response = self.client.get('/api/cancellation-history/?invoice=FILTER')
-		self.assertEqual(response.json()['cancellations'][0]['deleted_by'], 'cashier-17')
+		self.assertEqual(response.json()['cancellations'][0]['deleted_by'], 'operator')
 
 
 class AuthenticationTests(TestCase):
@@ -122,6 +122,17 @@ class AuthenticationTests(TestCase):
 		response = self.client.post('/users/', {'action': 'delete', 'user_id': operator.pk})
 		self.assertEqual(response.status_code, 200)
 		self.assertFalse(get_user_model().objects.filter(username='operator').exists())
+
+	def test_web_cancellation_records_logged_in_username(self):
+		self.client.force_login(self.admin)
+		response = self.client.post(
+			'/api/cancel-sale/',
+			data=json.dumps({'invoice': 'INV-ACTOR', 'branch': 'Branch A'}),
+			content_type='application/json',
+		)
+		from loraApi.models import DeletionRecord
+		record = DeletionRecord.objects.get(deletion_id=response.json()['deletion_id'])
+		self.assertEqual(record.deleted_by, 'Admin')
 
 	def test_invalid_user_creation_shows_validation_reason(self):
 		self.client.force_login(self.admin)

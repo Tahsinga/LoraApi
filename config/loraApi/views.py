@@ -213,6 +213,7 @@ def cancel_sale(request):
         action='cancel_invoice',
         status='pending',
         source='web_dashboard',
+        deleted_by=request.user.get_username(),
         message=f'Web cancellation requested for invoice {invoice} at {branch}',
     )
 
@@ -445,7 +446,8 @@ def confirm_deletion(request):
 
         deletion_record.status = 'processed'
         deletion_record.deleted_rows = deleted_rows
-        deletion_record.deleted_by = deleted_by
+        if deleted_by and not deletion_record.deleted_by:
+            deletion_record.deleted_by = deleted_by
         deletion_record.confirmed_branch = branch
         deletion_record.confirmation_timestamp = timezone.now()
         deletion_record.save(update_fields=[
