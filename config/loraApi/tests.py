@@ -97,3 +97,13 @@ class AuthenticationTests(TestCase):
 		})
 		self.assertEqual(response.status_code, 200)
 		self.assertTrue(operator.__class__.objects.get(pk=operator.pk).check_password('ChangedPass4182!'))
+
+		response = self.client.post('/users/', {'action': 'delete', 'user_id': operator.pk})
+		self.assertEqual(response.status_code, 200)
+		self.assertFalse(get_user_model().objects.filter(username='operator').exists())
+
+	def test_logout_requires_post_and_ends_session(self):
+		self.client.force_login(self.admin)
+		self.assertEqual(self.client.post('/logout/').status_code, 302)
+		self.assertEqual(self.client.post('/logout/').url, '/login/')
+		self.assertRedirects(self.client.get('/'), '/login/?next=/')

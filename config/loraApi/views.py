@@ -149,6 +149,18 @@ def user_management(request):
                     message = f'Password changed for {user.username}.'
                 else:
                     error = 'Password change failed. Use matching passwords and meet the password rules.'
+        elif action == 'delete':
+            try:
+                user = User.objects.get(pk=request.POST.get('user_id'))
+            except User.DoesNotExist:
+                error = 'User not found.'
+            else:
+                if user == request.user:
+                    error = 'The active Admin account cannot be deleted.'
+                else:
+                    username = user.username
+                    user.delete()
+                    message = f'User {username} was deleted.'
 
     users = User.objects.order_by('username')
     return render(request, 'loraApi/users.html', {
