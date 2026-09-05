@@ -102,6 +102,16 @@ class AuthenticationTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertFalse(get_user_model().objects.filter(username='operator').exists())
 
+	def test_invalid_user_creation_shows_validation_reason(self):
+		self.client.force_login(self.admin)
+		response = self.client.post('/users/', {
+			'action': 'create',
+			'username': 'Admin',
+			'password1': 'short',
+			'password2': 'short',
+		})
+		self.assertContains(response, 'already exists')
+
 	def test_logout_requires_post_and_ends_session(self):
 		self.client.force_login(self.admin)
 		self.assertEqual(self.client.post('/logout/').status_code, 302)

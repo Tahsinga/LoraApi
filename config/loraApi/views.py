@@ -134,7 +134,9 @@ def user_management(request):
                 user.save(update_fields=['is_staff', 'is_superuser'])
                 message = f'User {user.username} was created.'
             else:
-                error = 'Please correct the new user details.'
+                error = ' '.join(
+                    message for messages in form.errors.values() for message in messages
+                )
         elif action == 'change_password':
             try:
                 user = User.objects.get(pk=request.POST.get('user_id'))
