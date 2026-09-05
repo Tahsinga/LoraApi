@@ -1,8 +1,12 @@
 import json
 import time
+from datetime import timedelta
+from django.db import transaction
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from .models import DeletionRecord
 
 """
 ================================================================================
@@ -31,33 +35,36 @@ This ensures the SAME invoice number that was cancelled is deleted with 100% acc
 ================================================================================
 """
 
-# Deletion requests that need to be processed by branches
-DELETION_QUEUE = []
-
-# Track processed deletions
-PROCESSED_DELETIONS = []
-
 # Branches are considered online while they continue sending heartbeats.
 CONNECTED_BRANCHES = {}
 BRANCH_ONLINE_SECONDS = 20
 
 
 def cleanup_queues():
-    """Remove old items from queues"""
-    global DELETION_QUEUE, PROCESSED_DELETIONS
-    current_time = time.time()
-    
-    # Keep pending deletions (status='pending') indefinitely, keep 'processing' for 60s
-    DELETION_QUEUE = [
-        item for item in DELETION_QUEUE
-        if item.get('status') == 'pending' or (current_time - item.get('timestamp', current_time)) < 60
-    ]
-    
-    # Keep confirmed items long enough for the dashboard to show recent invoices.
-    PROCESSED_DELETIONS = [
-        item for item in PROCESSED_DELETIONS
-        if (current_time - item.get('confirmation_timestamp', item.get('timestamp', current_time))) < 86400
-    ]
+    """Remove old confirmed records while retaining the audit trail briefly."""
+    cutoff = timezone.now() - timedelta(days=1)
+    DeletionRecord.objects.filter(
+        status='processed', confirmation_timestamp__lt=cutoff
+    ).delete()
+
+
+def record_payload(record):
+    return {
+        'id': record.deletion_id,
+        'branch': record.branch,
+        'invoice': record.invoice,
+        'product_id': record.product_id,
+        'entry_no': record.entry_no,
+        'action': record.action,
+        'status': record.status,
+        'timestamp': record.timestamp.timestamp(),
+        'source': record.source,
+        'deleted_from_main': record.deleted_from_main,
+        'message': record.message,
+        'deleted_rows': record.deleted_rows,
+        'confirmed_branch': record.confirmed_branch,
+        'confirmation_timestamp': record.confirmation_timestamp.timestamp() if record.confirmation_timestamp else None,
+    }
 
 
 @csrf_exempt
@@ -65,8 +72,8 @@ def index(request):
     """Browser dashboard for managing branch sale cancellations."""
     cleanup_queues()
     return render(request, 'loraApi/dashboard.html', {
-        'pending_count': len([item for item in DELETION_QUEUE if item.get('status') == 'pending']),
-        'processed_count': len(PROCESSED_DELETIONS),
+        'pending_count': DeletionRecord.objects.filter(status__in=['pending', 'processing']).count(),
+        'processed_count': DeletionRecord.objects.filter(status='processed').count(),
     })
 
 
@@ -88,21 +95,20 @@ def cancel_sale(request):
     if not invoice or not branch:
         return JsonResponse({'status': 'error', 'message': 'Invoice and branch are required.'}, status=400)
 
-    deletion_record = {
-        'id': f"WEB_{branch}_{invoice}_{int(time.time()*1000)}",
-        'branch': branch,
-        'invoice': invoice,
-        'product_id': None,
-        'entry_no': '',
-        'action': 'cancel_invoice',
-        'status': 'pending',
-        'timestamp': time.time(),
-        'source': 'web_dashboard',
-        'message': f'Web cancellation requested for invoice {invoice} at {branch}'
-    }
-    DELETION_QUEUE.append(deletion_record)
+    deletion_id = f"WEB_{branch}_{invoice}_{int(time.time()*1000)}"
+    deletion_record = DeletionRecord.objects.create(
+        deletion_id=deletion_id,
+        branch=branch,
+        invoice=invoice,
+        product_id=product_id,
+        entry_no='',
+        action='cancel_invoice',
+        status='pending',
+        source='web_dashboard',
+        message=f'Web cancellation requested for invoice {invoice} at {branch}',
+    )
 
-    return JsonResponse({'status': 'accepted', 'message': f'Cancellation queued for invoice {invoice}.', 'deletion_id': deletion_record['id']}, status=202)
+    return JsonResponse({'status': 'accepted', 'message': f'Cancellation queued for invoice {invoice}.', 'deletion_id': deletion_record.deletion_id}, status=202)
 
 
 @csrf_exempt
@@ -167,15 +173,10 @@ def branch_sync(request):
         # Get query parameters to filter by branch
         branch_name = request.GET.get('branch', '').strip()
         
-        if not branch_name:
-            # Return all pending deletions if no branch specified
-            pending = [item for item in DELETION_QUEUE if item.get('status') == 'pending']
-        else:
-            # Return only pending deletions for this specific branch
-            pending = [
-                item for item in DELETION_QUEUE 
-                if item.get('status') == 'pending' and item.get('branch', '').lower() == branch_name.lower()
-            ]
+        pending_query = DeletionRecord.objects.filter(status='pending')
+        if branch_name:
+            pending_query = pending_query.filter(branch__iexact=branch_name)
+        pending = [record_payload(item) for item in pending_query]
         
         return JsonResponse({
             'status': 'ok',
@@ -207,26 +208,24 @@ def branch_sync(request):
         }, status=400)
     
     # Create deletion record
-    deletion_record = {
-        'id': f"{branch}_{invoice}_{product_id}_{entry_no}_{int(time.time()*1000)}",
-        'branch': branch,
-        'invoice': invoice,
-        'product_id': product_id,
-        'entry_no': entry_no,
-        'action': payload.get('action', 'delete'),
-        'status': 'pending',  # pending -> processing -> processed
-        'timestamp': time.time(),
-        'source': 'branch_cancel',
-        'message': f'Branch {branch} cancelled invoice {invoice}'
-    }
-    
-    DELETION_QUEUE.append(deletion_record)
+    deletion_id = f"{branch}_{invoice}_{product_id}_{entry_no}_{int(time.time()*1000)}"
+    deletion_record = DeletionRecord.objects.create(
+        deletion_id=deletion_id,
+        branch=branch,
+        invoice=str(invoice),
+        product_id=str(product_id) if product_id is not None else None,
+        entry_no=str(entry_no) if entry_no is not None else '',
+        action=payload.get('action', 'delete'),
+        status='pending',
+        source='branch_cancel',
+        message=f'Branch {branch} cancelled invoice {invoice}',
+    )
     
     return JsonResponse({
         'status': 'accepted',
         'message': f'Deletion request queued for invoice {invoice}',
-        'deletion_id': deletion_record.get('id'),
-        'queue_size': len(DELETION_QUEUE)
+        'deletion_id': deletion_record.deletion_id,
+        'queue_size': DeletionRecord.objects.filter(status='pending').count()
     }, status=202)
 
 
@@ -242,16 +241,16 @@ def main_sync(request):
     
     if request.method == 'GET':
         # Main checks pending and recently processed deletions
-        pending = [item for item in DELETION_QUEUE if item.get('status') in ['pending', 'processing']]
-        processed = PROCESSED_DELETIONS[-10:]  # Last 10 processed
+        pending = [record_payload(item) for item in DeletionRecord.objects.filter(status__in=['pending', 'processing'])]
+        processed = [record_payload(item) for item in DeletionRecord.objects.filter(status='processed').order_by('-confirmation_timestamp')[:10]]
         
         return JsonResponse({
             'status': 'ok',
             'service': 'main_sync_trigger',
             'pending_deletions': pending,
-            'pending_count': len(pending),
+            'pending_count': DeletionRecord.objects.filter(status__in=['pending', 'processing']).count(),
             'recently_processed': processed,
-            'processed_count': len(PROCESSED_DELETIONS)
+            'processed_count': DeletionRecord.objects.filter(status='processed').count()
         })
 
     # POST: Main sends deletion request to all branches
@@ -275,26 +274,24 @@ def main_sync(request):
         }, status=400)
     
     # Create deletion trigger from main
-    deletion_record = {
-        'id': f"MAIN_{branch}_{invoice}_{product_id}_{entry_no}_{int(time.time()*1000)}",
-        'branch': branch,
-        'invoice': invoice,
-        'product_id': product_id,
-        'entry_no': entry_no,
-        'status': 'pending',
-        'timestamp': time.time(),
-        'source': 'main_cancellation',
-        'deleted_from_main': deleted_from_main,
-        'message': f'Main cancelled invoice {invoice} - DELETE FROM ALL BRANCHES'
-    }
-    
-    DELETION_QUEUE.append(deletion_record)
+    deletion_id = f"MAIN_{branch}_{invoice}_{product_id}_{entry_no}_{int(time.time()*1000)}"
+    deletion_record = DeletionRecord.objects.create(
+        deletion_id=deletion_id,
+        branch=str(branch or ''),
+        invoice=str(invoice),
+        product_id=str(product_id) if product_id is not None else None,
+        entry_no=str(entry_no) if entry_no is not None else '',
+        status='pending',
+        source='main_cancellation',
+        deleted_from_main=deleted_from_main,
+        message=f'Main cancelled invoice {invoice} - DELETE FROM ALL BRANCHES',
+    )
     
     return JsonResponse({
         'status': 'triggered',
         'message': f'Deletion trigger issued for invoice {invoice} on branch {branch}',
-        'deletion_id': deletion_record.get('id'),
-        'queue_size': len(DELETION_QUEUE)
+        'deletion_id': deletion_record.deletion_id,
+        'queue_size': DeletionRecord.objects.filter(status='pending').count()
     }, status=202)
 
 
@@ -326,26 +323,26 @@ def confirm_deletion(request):
             'message': 'Missing deletion_id'
         }, status=400)
     
-    # Find and mark the deletion as processed
-    for item in DELETION_QUEUE:
-        if item.get('id') == deletion_id:
-            item['status'] = 'processed'
-            item['deleted_rows'] = deleted_rows
-            item['confirmed_branch'] = branch
-            item['confirmation_timestamp'] = time.time()
-            
-            # Move to processed list
-            PROCESSED_DELETIONS.append(item)
-            DELETION_QUEUE.remove(item)
-            
+    with transaction.atomic():
+        try:
+            deletion_record = DeletionRecord.objects.select_for_update().get(deletion_id=deletion_id)
+        except DeletionRecord.DoesNotExist:
             return JsonResponse({
-                'status': 'confirmed',
-                'message': f'Deletion confirmed: {deleted_rows} row(s) deleted',
-                'deletion_id': deletion_id,
-                'branch': branch
-            })
-    
+                'status': 'error',
+                'message': f'Deletion ID {deletion_id} not found in queue'
+            }, status=404)
+
+        deletion_record.status = 'processed'
+        deletion_record.deleted_rows = deleted_rows
+        deletion_record.confirmed_branch = branch
+        deletion_record.confirmation_timestamp = timezone.now()
+        deletion_record.save(update_fields=[
+            'status', 'deleted_rows', 'confirmed_branch', 'confirmation_timestamp'
+        ])
+
     return JsonResponse({
-        'status': 'error',
-        'message': f'Deletion ID {deletion_id} not found in queue'
-    }, status=404)
+        'status': 'confirmed',
+        'message': f'Deletion confirmed: {deleted_rows} row(s) deleted',
+        'deletion_id': deletion_id,
+        'branch': branch
+    })
