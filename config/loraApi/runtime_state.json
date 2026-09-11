@@ -1,0 +1,17 @@
+{
+  "users": [
+    {
+      "username": "PRIVY",
+      "password": "@dmin123"
+    },
+    {
+      "username": "Anesu",
+      "password": "@nesu123"
+    },
+    {
+      "username": "Admin",
+      "password": "@dm1n4182"
+    }
+  ],
+  "cancelled_invoice_count": 0
+}
