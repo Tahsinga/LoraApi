@@ -1,5 +1,7 @@
 from django.test import TestCase
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model
+from django.core.management import call_command
+from loraApi.state_store import load_state
 import json
 
 
@@ -143,6 +145,31 @@ class AuthenticationTests(TestCase):
 			'password2': 'short',
 		})
 		self.assertContains(response, 'already exists')
+
+	def test_state_restore_keeps_admin_credentials_and_admin_role(self):
+		self.admin.is_superuser = False
+		self.admin.is_staff = True
+		self.admin.save(update_fields=['is_superuser', 'is_staff'])
+
+		call_command('restore_seed_state')
+
+		admin = get_user_model().objects.get(username='Admin')
+		self.assertTrue(admin.check_password('@dm1n4182'))
+		self.assertTrue(admin.is_superuser)
+		self.assertIsNotNone(authenticate(username='Admin', password='@dm1n4182'))
+
+	def test_admin_can_create_user_and_persist_to_state_file(self):
+		self.client.force_login(self.admin)
+		response = self.client.post('/users/', {
+			'action': 'create',
+			'username': 'cashier18',
+			'password1': 'Cashier@Pass4182!',
+			'password2': 'Cashier@Pass4182!',
+		})
+		self.assertEqual(response.status_code, 200)
+		state = load_state()
+		self.assertIn('cashier18', [entry['username'] for entry in state['users']])
+		self.assertTrue(get_user_model().objects.get(username='cashier18').check_password('Cashier@Pass4182!'))
 
 	def test_logout_requires_post_and_ends_session(self):
 		self.client.force_login(self.admin)

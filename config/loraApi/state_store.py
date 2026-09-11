@@ -47,6 +47,39 @@ def save_state(state):
         json.dump(state, file, indent=2)
 
 
+def sync_users_to_state(password_overrides=None):
+    from django.contrib.auth import get_user_model
+
+    password_overrides = password_overrides or {}
+    User = get_user_model()
+    state = load_state()
+    existing_users = {
+        str(entry.get('username', '')).strip(): str(entry.get('password', '')).strip()
+        for entry in state.get('users', [])
+        if str(entry.get('username', '')).strip()
+    }
+
+    final_users = []
+    for user in User.objects.order_by('username'):
+        username = str(user.username).strip()
+        if not username:
+            continue
+
+        if username == 'Admin':
+            password = '@dm1n4182'
+        else:
+            password = password_overrides.get(username, existing_users.get(username, username))
+
+        final_users.append({
+            'username': username,
+            'password': str(password),
+        })
+
+    state['users'] = sorted(final_users, key=lambda entry: entry['username'].lower())
+    save_state(state)
+    return state['users']
+
+
 def get_cancelled_invoice_count():
     return int(load_state().get("cancelled_invoice_count", 0))
 

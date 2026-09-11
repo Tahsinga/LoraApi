@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import DeletionRecord
+from .state_store import sync_users_to_state
 
 """
 ================================================================================
@@ -141,10 +142,12 @@ def user_management(request):
         if action == 'create':
             form = UserCreationForm(request.POST)
             if form.is_valid():
+                password = form.cleaned_data['password1']
                 user = form.save()
-                user.is_staff = False
+                user.is_staff = True
                 user.is_superuser = False
                 user.save(update_fields=['is_staff', 'is_superuser'])
+                sync_users_to_state({user.username: password})
                 message = f'User {user.username} was created.'
             else:
                 error = ' '.join(
@@ -158,7 +161,9 @@ def user_management(request):
             else:
                 form = SetPasswordForm(user, request.POST)
                 if form.is_valid():
+                    password = form.cleaned_data['new_password1']
                     form.save()
+                    sync_users_to_state({user.username: password})
                     if user == request.user:
                         update_session_auth_hash(request, user)
                     message = f'Password changed for {user.username}.'
@@ -175,6 +180,7 @@ def user_management(request):
                 else:
                     username = user.username
                     user.delete()
+                    sync_users_to_state()
                     message = f'User {username} was deleted.'
 
     users = User.objects.order_by('username')
