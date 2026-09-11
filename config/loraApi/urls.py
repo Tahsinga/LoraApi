@@ -1,8 +1,7 @@
 from django.urls import path
 from .views import (
     branch_status, branch_sync, cancel_sale, health_check, main_sync,
-    index, favicon, confirm_deletion, cancellation_history,
-    cancellation_history_api,
+    index, favicon, confirm_deletion, cancellation_history_api,
 )
 
 urlpatterns = [

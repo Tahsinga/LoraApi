@@ -1,13 +1,15 @@
 import json
 import time
-from django.db import transaction
-from django.http import JsonResponse, HttpResponse
-from django.shortcuts import render
+
 from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.forms import SetPasswordForm, UserCreationForm
+from django.db import transaction
+from django.http import JsonResponse, HttpResponse
+from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+
 from .models import DeletionRecord
 
 """
@@ -15,8 +17,8 @@ from .models import DeletionRecord
 LORA POS RETURNS - DELETION TRIGGER SYSTEM
 ================================================================================
 
-This API acts as a trigger mediator for invoice deletions across branch and main 
-databases. It ensures consistent deletion of the SAME invoice across all systems.
+This API acts as a trigger mediator for invoice deletions across branch and main
+.databases. It ensures consistent deletion of the SAME invoice across all systems.
 
 FLOW:
 1. Branch cancels invoice locally → Sends complete details to /api/branch-sync/ (POST)
@@ -37,7 +39,6 @@ This ensures the SAME invoice number that was cancelled is deleted with 100% acc
 ================================================================================
 """
 
-# Branches are considered online while they continue sending heartbeats.
 CONNECTED_BRANCHES = {}
 BRANCH_ONLINE_SECONDS = 20
 
@@ -272,21 +273,19 @@ def health_check(request):
 def branch_sync(request):
     """
     TRIGGER SYSTEM FOR BRANCH DELETIONS
-    
+
     GET: Branch polls for pending deletions
     POST: Branch notifies of deletion completion (from branch cancel)
     """
     cleanup_queues()
-    
+
     if request.method == 'GET':
-        # Get query parameters to filter by branch
         branch_name = request.GET.get('branch', '').strip()
-        
         pending_query = DeletionRecord.objects.filter(status='pending')
         if branch_name:
             pending_query = pending_query.filter(branch__iexact=branch_name)
         pending = [record_payload(item) for item in pending_query]
-        
+
         return JsonResponse({
             'status': 'ok',
             'service': 'branch_sync_trigger',
@@ -296,27 +295,23 @@ def branch_sync(request):
             'message': f'Found {len(pending)} deletion(s) to process'
         })
 
-    # POST: Receive deletion notification from branch
     try:
         payload = json.loads(request.body or '{}')
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
-    
-    # Branch sends: invoice, product_id, entry_no, branch, deleted=true
-    # when it cancels an invoice locally
+
     invoice = payload.get('invoice')
     product_id = payload.get('product_id')
     entry_no = payload.get('entry_no')
     branch = payload.get('branch', 'unknown')
     deleted = payload.get('deleted', False)
-    
+
     if not invoice or not deleted:
         return JsonResponse({
             'status': 'error',
             'message': 'Missing required fields: invoice, deleted=true'
         }, status=400)
-    
-    # Create deletion record
+
     deletion_id = f"{branch}_{invoice}_{product_id}_{entry_no}_{int(time.time()*1000)}"
     deletion_record = DeletionRecord.objects.create(
         deletion_id=deletion_id,
@@ -329,7 +324,7 @@ def branch_sync(request):
         source='branch_cancel',
         message=f'Branch {branch} cancelled invoice {invoice}',
     )
-    
+
     return JsonResponse({
         'status': 'accepted',
         'message': f'Deletion request queued for invoice {invoice}',
@@ -342,17 +337,16 @@ def branch_sync(request):
 def main_sync(request):
     """
     MAIN SYNC ENDPOINT - Main database sends deletions to branches via trigger
-    
+
     POST: Main requests branch to delete (triggered by cancellation)
     GET: Main checks deletion status
     """
     cleanup_queues()
-    
+
     if request.method == 'GET':
-        # Main checks pending and recently processed deletions
         pending = [record_payload(item) for item in DeletionRecord.objects.filter(status__in=['pending', 'processing'])]
         processed = [record_payload(item) for item in DeletionRecord.objects.filter(status='processed').order_by('-confirmation_timestamp')[:10]]
-        
+
         return JsonResponse({
             'status': 'ok',
             'service': 'main_sync_trigger',
@@ -362,27 +356,23 @@ def main_sync(request):
             'processed_count': DeletionRecord.objects.filter(status='processed').count()
         })
 
-    # POST: Main sends deletion request to all branches
     try:
         payload = json.loads(request.body or '{}')
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
-    
-    # Main sends: invoice, product_id, entry_no, branch(es)
-    # This is the authoritative deletion command
+
     invoice = payload.get('invoice')
     product_id = payload.get('product_id')
     entry_no = payload.get('entry_no')
     branch = payload.get('branch')
     deleted_from_main = payload.get('deleted_from_main', False)
-    
+
     if not invoice:
         return JsonResponse({
             'status': 'error',
             'message': 'Missing required field: invoice'
         }, status=400)
-    
-    # Create deletion trigger from main
+
     deletion_id = f"MAIN_{branch}_{invoice}_{product_id}_{entry_no}_{int(time.time()*1000)}"
     deletion_record = DeletionRecord.objects.create(
         deletion_id=deletion_id,
@@ -395,7 +385,7 @@ def main_sync(request):
         deleted_from_main=deleted_from_main,
         message=f'Main cancelled invoice {invoice} - DELETE FROM ALL BRANCHES',
     )
-    
+
     return JsonResponse({
         'status': 'triggered',
         'message': f'Deletion trigger issued for invoice {invoice} on branch {branch}',
@@ -408,19 +398,19 @@ def main_sync(request):
 def confirm_deletion(request):
     """
     CONFIRMATION ENDPOINT - Branch confirms deletion was successful
-    
+
     POST: Branch sends confirmation that deletion succeeded
     """
     cleanup_queues()
-    
+
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Use POST method'}, status=405)
-    
+
     try:
         payload = json.loads(request.body or '{}')
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
-    
+
     deletion_id = payload.get('deletion_id')
     deleted_rows = payload.get('deleted_rows', 0)
     branch = payload.get('branch')
@@ -428,13 +418,13 @@ def confirm_deletion(request):
     deleted_by = str(
         payload.get('deleted_by') or payload.get('username') or payload.get('user_number') or ''
     ).strip()
-    
+
     if not deletion_id:
         return JsonResponse({
             'status': 'error',
             'message': 'Missing deletion_id'
         }, status=400)
-    
+
     with transaction.atomic():
         try:
             deletion_record = DeletionRecord.objects.select_for_update().get(deletion_id=deletion_id)
